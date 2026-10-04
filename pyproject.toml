@@ -1,0 +1,20 @@
+[project]
+name = "school-schedule"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "MatiasGinzburg", email = "matiorc98@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "openpyxl>=3.1.5",
+    "pandas>=3.0.6",
+]
+
+[project.scripts]
+school-schedule = "school_schedule:main"
+
+[build-system]
+requires = ["uv_build>=0.12.18,<0.13.0"]
+build-backend = "uv_build"
