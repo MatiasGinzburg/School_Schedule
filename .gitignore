@@ -10,5 +10,5 @@ wheels/
 .venv
 
 # testing file
-tesst.py
+src/school_schedule/test.py
  
