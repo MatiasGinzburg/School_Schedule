@@ -9,6 +9,5 @@ wheels/
 # Virtual environments
 .venv
 
-# testing file
-src/school_schedule/test.py
+
  

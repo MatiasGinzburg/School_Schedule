@@ -1,8 +1,13 @@
 import logging
-from data_loader import load_and_validate_data
-from optimizer import solve_schedule
-from control import verify_schedule
-from exporter import export_schedule_to_excel, export_professor_schedules_to_excel
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+from backend.data_loader import load_and_validate_data
+from backend.optimizer import solve_schedule
+from backend.control import verify_schedule
+from backend.exporter import export_schedule_to_excel, export_professor_schedules_to_excel
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
