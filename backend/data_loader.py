@@ -31,7 +31,7 @@ def load_and_validate_data(file_path: str):
     Reads the spreadsheet, extracts metadata, bounds grids, runs strict 
     compatibility checks, and returns data structured for PuLP.
     """
-    file_path = Path(file_path)
+    #file_path = Path(file_path)
     xls = pd.ExcelFile(file_path)
     
     if "hours_per_course" not in xls.sheet_names:
