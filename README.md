@@ -11,8 +11,8 @@ This repository contains a Python-based scheduling system designed to solve comp
 
 1. **Clone the repository:**
    ```bash
-   git clone <YOUR_GITHUB_REPO_URL>
-   cd <YOUR_PROJECT_FOLDER>
+   git clone https://github.com/MatiasGinzburg/School_Schedule.git
+   cd .\school_schedule\
     ```
 2. **Install dependencies:**
 Because this project uses uv, you can install all required dependencies (including pandas, openpyxl, pulp, and streamlit) directly from the uv.lock file by running:
