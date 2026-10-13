@@ -11,7 +11,6 @@ def load_and_validate_data(file_path: str):
     Reads the consolidated spreadsheet 'Horarios_SG.xlsx', extracts canonical lists, 
     and builds the requirement and availability matrices.
     """
-    file_path = Path(file_path)
     logger.info(f"Loading data from {file_path}...")
     xls = pd.ExcelFile(file_path)
     
