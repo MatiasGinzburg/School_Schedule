@@ -38,7 +38,7 @@ The application requires a single, consolidated .xlsx workbook containing specif
 
 Your input Excel file must contain the following specific tabs:
 
-*Names* Sheet:
+**Names** Sheet:
 
 Contains the canonical lists used to build the schedule.
 
@@ -46,7 +46,7 @@ Must have columns titled Courses, Professors, Subjects, Days, and Hours.
 
 The first data row is reserved for item counts, and the actual names must be listed from the second row downwards.
 
-*_hours_per_course_per_professor* Sheet:
+**_hours_per_course_per_professor** Sheet:
 
 The matrix defining the required teaching hours.
 
@@ -54,7 +54,7 @@ The first column must list the course names, and the first row must list the ass
 
 Intersecting cells contain the total required teaching hours per week for that specific course and professor combination.
 
-*Courses_disponibility* Sheet:
+**Courses_disponibility** Sheet:
 
 Defines the tri-state availability for the student groups.
 
@@ -62,7 +62,7 @@ The first 5 rows are reserved for notes and are ignored by the parser. Row 6 mus
 
 Valid Inputs: 0 (course is not at school), 1 (mandatory slot, requiring exactly one professor), or 2 (optional/flexible slot, where unassigned hours are automatically grouped at the end of the day).
 
-*Professors_disponibility* Sheet:
+**Professors_disponibility** Sheet:
 
 Defines when professors are available to work.
 
@@ -70,4 +70,4 @@ Follows the same structure as the courses sheet: the first 5 rows are ignored, R
 
 Valid Inputs: 1 (available to teach) or 0 (unavailable).
 
-`A sheet model with an example can be found in Example_data/Horarios_SG.xlsx.`
+*A sheet model with an example can be found in Example_data/Horarios_SG.xlsx.*
