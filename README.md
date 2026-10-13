@@ -34,10 +34,40 @@ Start the local Streamlit web server by running the following command in your te
 Click Generate Schedule. The application will optimize the schedule to minimize the days professors must attend and compress their active hours. Once verified, you can download both the Master Schedule and the individual Professor Schedules directly from the browser.
 
 ## Input Data Format Requirements
-Your input Excel (.xlsx) file must contain:
+The application requires a single, consolidated .xlsx workbook containing specific master sheets to define the schedule.
 
-A sheet named exactly hours_per_course containing the course names in the first column, professor names in the first row, and the required teaching hours in the intersecting cells. It must also include schedule metadata in cells T1:U3 detailing the days per week, hours per day, and total hours.
+Your input Excel file must contain the following specific tabs:
 
-One additional sheet per professor (named exactly as they appear in the hours_per_course sheet) detailing their availability, with days as columns and hours as rows.
+*Names* Sheet:
 
-A sheet model with an example can be found in the Example_data/school_schedule.xlsx
+Contains the canonical lists used to build the schedule.
+
+Must have columns titled Courses, Professors, Subjects, Days, and Hours.
+
+The first data row is reserved for item counts, and the actual names must be listed from the second row downwards.
+
+*_hours_per_course_per_professor* Sheet:
+
+The matrix defining the required teaching hours.
+
+The first column must list the course names, and the first row must list the assigned professor names.
+
+Intersecting cells contain the total required teaching hours per week for that specific course and professor combination.
+
+*Courses_disponibility* Sheet:
+
+Defines the tri-state availability for the student groups.
+
+The first 5 rows are reserved for notes and are ignored by the parser. Row 6 must contain the column headers (Days/Hours), and Column A must list the course names.
+
+Valid Inputs: 0 (course is not at school), 1 (mandatory slot, requiring exactly one professor), or 2 (optional/flexible slot, where unassigned hours are automatically grouped at the end of the day).
+
+*Professors_disponibility* Sheet:
+
+Defines when professors are available to work.
+
+Follows the same structure as the courses sheet: the first 5 rows are ignored, Row 6 contains headers, and Column A lists the professor names.
+
+Valid Inputs: 1 (available to teach) or 0 (unavailable).
+
+`A sheet model with an example can be found in Example_data/Horarios_SG.xlsx.`
