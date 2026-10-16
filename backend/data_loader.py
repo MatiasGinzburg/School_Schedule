@@ -67,11 +67,13 @@ def load_and_validate_data(file_path):
     R = {c: {p: 0 for p in professors} for c in courses}
     aliases = {} 
     alias_requirements = {}
+    subject_map = {}  # NEW: Maps assignments to their Subject names
 
     # --- PROCESS REQUIREMENTS AND ALIASES DIRECTLY FROM SUBJECTS ---
     for _, row in df_subj.iterrows():
         p_str = str(row['Professor'])
         c_str = str(row['Course'])
+        subj_name = str(row['Subject']).strip()
         
         # Skip invalid/empty rows safely
         if pd.isna(row['Total Hours']) or p_str.lower() in ['nan', 'none'] or c_str.lower() in ['nan', 'none']:
@@ -81,6 +83,13 @@ def load_and_validate_data(file_path):
         target_courses = [c.strip() for c in c_str.split(',')]
         hours_needed = int(row['Total Hours'])
         
+        # The solver outputs assigned professors as a comma-separated string
+        solver_prof_string = ", ".join(target_profs)
+        
+        # Map every course involved in this subject to the subject name
+        for c in target_courses:
+            subject_map[(c, solver_prof_string)] = subj_name
+        
         # Check if it's a joint class (commas present)
         if len(target_profs) > 1 or len(target_courses) > 1:
             alias_name = f"ALIAS_{'_'.join(target_profs)}_FOR_{'_'.join(target_courses)}"
@@ -89,12 +98,11 @@ def load_and_validate_data(file_path):
                 aliases[alias_name] = {'professors': target_profs, 'courses': target_courses}
                 alias_requirements[alias_name] = 0
                 
-                # 1. Generate Availability Intersection for the Alias
+                # Generate Availability Intersection for the Alias
                 A_prof[alias_name] = {}
                 for d in days:
                     A_prof[alias_name][d] = {}
                     for h in hours:
-                        # Alias is available only if ALL component profs and courses are available
                         is_available = 1
                         for p in target_profs:
                             if A_prof.get(p, {}).get(d, {}).get(h, 0) == 0:
@@ -111,16 +119,16 @@ def load_and_validate_data(file_path):
             alias_requirements[alias_name] += hours_needed
             
         else:
-            # Standard individual class (1 Prof, 1 Course)
+            # Standard individual class
             p = target_profs[0]
             c = target_courses[0]
             
             if c in R and p in R[c]:
-                # Accumulate hours directly into the base matrix
                 R[c][p] += hours_needed
             else:
                 logger.warning(f"Subject row references unknown course '{c}' or professor '{p}'.")
 
+                
     logger.info(f"Generated {len(aliases)} virtual aliases for joint lectures.")
 
     return {
@@ -132,6 +140,6 @@ def load_and_validate_data(file_path):
         "availability": A_prof,
         "course_availability": A_course,
         "aliases": aliases,
-        "alias_requirements": alias_requirements
+        "alias_requirements": alias_requirements,
+        "subject_map": subject_map  # Add map to output payload
     }
-

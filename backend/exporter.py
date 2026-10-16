@@ -5,10 +5,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 def export_schedule_to_excel_bytes(schedule: dict, data: dict) -> bytes:
-    """
-    Exports the master schedule to an in-memory Excel file.
-    Rows are courses, columns are hours, tabs are days.
-    """
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         for day in data['days']:
@@ -20,11 +16,12 @@ def export_schedule_to_excel_bytes(schedule: dict, data: dict) -> bytes:
                     state = data.get('course_availability', {}).get(c, {}).get(day, {}).get(h, 0)
                     
                     if prof:
-                        val = prof # Handles both individual ("P1") and joint strings ("P1, P2")
+                        # Direct tuple lookup handles both standard and joint classes
+                        val = data.get('subject_map', {}).get((c, prof), prof)
                     elif state == 0:
-                        val = "---" # Closed / Not at school
+                        val = "---" 
                     elif state == 2:
-                        val = "FREE" # Optional slot intentionally left empty
+                        val = "FREE" 
                     else:
                         val = "UNASSIGNED / ERROR"
                         
@@ -38,14 +35,7 @@ def export_schedule_to_excel_bytes(schedule: dict, data: dict) -> bytes:
     return output.getvalue()
 
 def export_professor_schedules_to_bytes(schedule: dict, data: dict) -> bytes:
-    """
-    Exports the individual professor schedules to an in-memory Excel file.
-    Rows are hours, columns are days, tabs are professors.
-    Handles joint aliases by merging multi-course assignments natively.
-    """
     output = io.BytesIO()
-    
-    # Filter out any injected dummy 'free_hour' variables so they don't get a tab
     real_profs = [p for p in data['professors'] if not str(p).startswith("free_hour_")]
     
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -54,28 +44,24 @@ def export_professor_schedules_to_bytes(schedule: dict, data: dict) -> bytes:
             for d in data['days']:
                 day_column = []
                 for h in data['hours']:
-                    assigned_courses_list = []
+                    assigned_subjects = []
                     
                     for c in data['courses']:
-                        assigned_prof = schedule.get(c, {}).get(d, {}).get(h)
-                        if assigned_prof:
-                            # Split string in case it's a joint alias (e.g., "ING7, ING4")
-                            active_profs = [x.strip() for x in str(assigned_prof).split(',')]
-                            
-                            # If this specific human professor is part of the assignment, append the course
+                        scheduled_entity = schedule.get(c, {}).get(d, {}).get(h)
+                        if scheduled_entity:
+                            active_profs = [x.strip() for x in str(scheduled_entity).split(',')]
                             if str(p) in active_profs:
-                                assigned_courses_list.append(str(c))
+                                subj = data.get('subject_map', {}).get((c, scheduled_entity), scheduled_entity)
+                                if subj not in assigned_subjects:
+                                    assigned_subjects.append(str(subj))
                                 
-                    # Join multiple courses if they are co-teaching a joint class (e.g., "3A, 2A")
-                    assigned_course = ", ".join(assigned_courses_list)
-                    day_column.append(assigned_course)
+                    cell_val = ", ".join(assigned_subjects) if assigned_subjects else "---"
+                    day_column.append(cell_val)
                     
                 prof_data[d] = day_column
             
             df_prof = pd.DataFrame(prof_data, index=data['hours'])
             df_prof.index.name = "Hours"
-            
-            # Excel limits sheet names to 31 characters
             safe_sheet_name = str(p)[:31]
             df_prof.to_excel(writer, sheet_name=safe_sheet_name)
             
