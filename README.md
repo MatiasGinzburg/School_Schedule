@@ -46,14 +46,6 @@ Must have columns titled Courses, Professors, Subjects, Days, and Hours.
 
 The first data row is reserved for item counts, and the actual names must be listed from the second row downwards.
 
-**_hours_per_course_per_professor** Sheet:
-
-The matrix defining the required teaching hours.
-
-The first column must list the course names, and the first row must list the assigned professor names.
-
-Intersecting cells contain the total required teaching hours per week for that specific course and professor combination.
-
 **Courses_disponibility** Sheet:
 
 Defines the tri-state availability for the student groups.
@@ -69,5 +61,15 @@ Defines when professors are available to work.
 Follows the same structure as the courses sheet: the first 5 rows are ignored, Row 6 contains headers, and Column A lists the professor names.
 
 Valid Inputs: 1 (available to teach) or 0 (unavailable).
+
+**Subjects** Sheet:
+
+Assign to each subject the total amount of hours, the professors and the courses.
+
+First row is ignored, second row contains the headers.
+
+The professors and courses assigned to a same subject must be placed at the same time slot.
+
+**Example data**
 
 *A sheet model with an example can be found in Example_data/Horarios_SG.xlsx.*

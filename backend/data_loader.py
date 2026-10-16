@@ -6,56 +6,35 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
-def load_and_validate_data(file_path: str):
+
+def load_and_validate_data(file_path):
     """
-    Reads the consolidated spreadsheet 'Horarios_SG.xlsx', extracts canonical lists, 
-    and builds the requirement and availability matrices.
+    Reads the consolidated spreadsheet, generating both standard requirements 
+    and virtual aliases for joint lectures entirely from the Subjects sheet.
     """
-    logger.info(f"Loading data from {file_path}...")
+    logger.info("Loading data from uploaded file...")
     xls = pd.ExcelFile(file_path)
     
     # 1. Load Canonical Lists from "Names" Tab
-    # We skip row 0 (the counts) and extract the names from row 1 onwards
     df_names = pd.read_excel(xls, sheet_name="Names")
     courses = df_names['Courses'].iloc[1:].dropna().astype(str).str.strip().tolist()
     professors = df_names['Professors'].iloc[1:].dropna().astype(str).str.strip().tolist()
     days = df_names['Days'].iloc[1:].dropna().astype(str).str.strip().tolist()
     hours = df_names['Hours'].iloc[1:].dropna().astype(str).str.strip().tolist()
-    
-    logger.info(f"Found {len(courses)} Courses, {len(professors)} Professors, {len(days)} Days, {len(hours)} Hours.")
 
-    # 2. Load Requirements Matrix
-    # Using index_col=0 sets the courses as the row labels
-    df_req = pd.read_excel(xls, sheet_name="_hours_per_course_per_professor", index_col=0).fillna(0)
-    df_req.index = df_req.index.astype(str).str.strip()
-    df_req.columns = df_req.columns.astype(str).str.strip()
-
-    # 3. Load Availabilities (skiprows=5 skips your notes)
-    # Course grid: Contains 0, 1, or 2
+    # 2. Load Availabilities
     df_c_disp = pd.read_excel(xls, sheet_name="Courses_disponibility", skiprows=5, index_col=0).fillna(0)
     df_c_disp.index = df_c_disp.index.astype(str).str.strip()
 
-    # Professor grid: Contains 0 or 1
     df_p_disp = pd.read_excel(xls, sheet_name="Professors_disponibility", skiprows=5, index_col=0).fillna(0)
     df_p_disp.index = df_p_disp.index.astype(str).str.strip()
 
-    # 4. Restructure Data into Dictionaries for PuLP
-    logger.info("Restructuring grids into constraint dictionaries...")
-    
-    # R[course][professor] = assigned hours
-    R = {}
-    for c in courses:
-        R[c] = {}
-        for p in professors:
-            if p in df_req.columns and c in df_req.index:
-                val = int(df_req.at[c, p])
-                if val > 0:
-                    R[c][p] = val
+    # 3. Load Subjects (Replacing the old requirements matrix)
+    df_subj = pd.read_excel(xls, sheet_name="Subjects", header=1)
 
-    # Because pandas renames duplicate columns (e.g., Monday, Monday.1, Monday.2), 
-    # we use linear column indexing based on the length of the hours list.
+    logger.info("Restructuring base grids into dictionaries...")
     
-    # A_prof[professor][day][hour] = 1 or 0
+    # Base Availabilities
     A_prof = {}
     for p in professors:
         A_prof[p] = {}
@@ -65,13 +44,11 @@ def load_and_validate_data(file_path: str):
                 col_idx = i * len(hours) + j
                 if p in df_p_disp.index and col_idx < len(df_p_disp.columns):
                     val = df_p_disp.iloc[df_p_disp.index.get_loc(p), col_idx]
-                    # Handle duplicate index safety
                     if isinstance(val, pd.Series): val = val.iloc[0]
                     A_prof[p][d][h] = 1 if int(val) > 0 else 0
                 else:
                     A_prof[p][d][h] = 0
 
-    # A_course[course][day][hour] = 0, 1, or 2
     A_course = {}
     for c in courses:
         A_course[c] = {}
@@ -86,7 +63,65 @@ def load_and_validate_data(file_path: str):
                 else:
                     A_course[c][d][h] = 0
 
-    logger.info("Data loaded successfully.")
+    # Initialize empty requirements
+    R = {c: {p: 0 for p in professors} for c in courses}
+    aliases = {} 
+    alias_requirements = {}
+
+    # --- PROCESS REQUIREMENTS AND ALIASES DIRECTLY FROM SUBJECTS ---
+    for _, row in df_subj.iterrows():
+        p_str = str(row['Professor'])
+        c_str = str(row['Course'])
+        
+        # Skip invalid/empty rows safely
+        if pd.isna(row['Total Hours']) or p_str.lower() in ['nan', 'none'] or c_str.lower() in ['nan', 'none']:
+            continue
+            
+        target_profs = [p.strip() for p in p_str.split(',')]
+        target_courses = [c.strip() for c in c_str.split(',')]
+        hours_needed = int(row['Total Hours'])
+        
+        # Check if it's a joint class (commas present)
+        if len(target_profs) > 1 or len(target_courses) > 1:
+            alias_name = f"ALIAS_{'_'.join(target_profs)}_FOR_{'_'.join(target_courses)}"
+            
+            if alias_name not in aliases:
+                aliases[alias_name] = {'professors': target_profs, 'courses': target_courses}
+                alias_requirements[alias_name] = 0
+                
+                # 1. Generate Availability Intersection for the Alias
+                A_prof[alias_name] = {}
+                for d in days:
+                    A_prof[alias_name][d] = {}
+                    for h in hours:
+                        # Alias is available only if ALL component profs and courses are available
+                        is_available = 1
+                        for p in target_profs:
+                            if A_prof.get(p, {}).get(d, {}).get(h, 0) == 0:
+                                is_available = 0
+                                break
+                        if is_available:
+                            for c in target_courses:
+                                if A_course.get(c, {}).get(d, {}).get(h, 0) == 0:
+                                    is_available = 0
+                                    break
+                        A_prof[alias_name][d][h] = is_available
+                        
+            # Accumulate hours for the joint alias
+            alias_requirements[alias_name] += hours_needed
+            
+        else:
+            # Standard individual class (1 Prof, 1 Course)
+            p = target_profs[0]
+            c = target_courses[0]
+            
+            if c in R and p in R[c]:
+                # Accumulate hours directly into the base matrix
+                R[c][p] += hours_needed
+            else:
+                logger.warning(f"Subject row references unknown course '{c}' or professor '{p}'.")
+
+    logger.info(f"Generated {len(aliases)} virtual aliases for joint lectures.")
 
     return {
         "courses": courses,
@@ -95,27 +130,8 @@ def load_and_validate_data(file_path: str):
         "hours": hours,
         "req_hours": R,
         "availability": A_prof,
-        "course_availability": A_course
+        "course_availability": A_course,
+        "aliases": aliases,
+        "alias_requirements": alias_requirements
     }
 
-if __name__ == "__main__":
-    # Quick test execution
-    try:
-        data = load_and_validate_data("./Example_data/Horarios_SG.xlsx")
-        
-        # Test Professor Extraction
-        prof = data['professors'][0]
-        print(f"\n--- Sample Req Hours for {prof} ---")
-        for c in data['courses']:
-            h = data['req_hours'][c].get(prof, 0)
-            if h > 0: print(f"{c}: {h} hours")
-            
-        # Test Course Tri-State Availability Extraction
-        sample_course = data['courses'][0]
-        sample_day = data['days'][0]
-        print(f"\n--- {sample_course} Availability on {sample_day} (0, 1, or 2) ---")
-        for h, state in data['course_availability'][sample_course][sample_day].items():
-            print(f"{h}: {state}")
-            
-    except Exception as e:
-        logger.error(f"Failed: {e}")
