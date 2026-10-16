@@ -282,3 +282,235 @@ def verify_schedule(schedule: dict, data: dict, active_constraints: list = None)
         logger.error("Schedule verification failed: One or more constraints were violated.")
         
     return is_valid
+
+
+def find_swap_by_course(course: str, target_day: str, target_hour: str, data: dict, schedule: dict) -> list:
+    """
+    Finds all possible timeslots for a given course that can be easily swapped 
+    with the specified target timeslot. A swap is valid if:
+    1. Both professors are available and not double-booked.
+    2. The course's availability allows classes at the swapped timeslots.
+    3. The swap does not generate stranded FREE hours in the middle of a day.
+    """
+    valid_swaps = []
+    
+    target_prof = schedule.get(course, {}).get(target_day, {}).get(target_hour)
+    course_avail = data.get('course_availability', {}).get(course, {})
+    
+    def is_prof_available(prof_str, d, h):
+        """Helper to verify if a professor (or group) can take a slot."""
+        if not prof_str:
+            return True
+            
+        profs = [p.strip() for p in str(prof_str).split(',')]
+        for p in profs:
+            if data.get('availability', {}).get(p, {}).get(d, {}).get(h, 0) == 0:
+                return False
+                
+            for c in data['courses']:
+                if c == course:
+                    continue
+                    
+                c_prof = schedule.get(c, {}).get(d, {}).get(h)
+                if c_prof:
+                    active_profs = [ap.strip() for ap in str(c_prof).split(',')]
+                    if p in active_profs:
+                        return False
+        return True
+
+    def validates_contiguous(d, simulated_day_schedule):
+        """Helper to verify that all FREE hours remain strictly at the end of the day."""
+        hours = data['hours']
+        c_avail_day = course_avail.get(d, {})
+        
+        for i in range(len(hours) - 1):
+            h_curr = hours[i]
+            h_next = hours[i + 1]
+            
+            # A slot is an empty "FREE" hour if it's open (1 or 2) but has no assigned professor
+            curr_empty = (c_avail_day.get(h_curr, 0) in [1, 2]) and not simulated_day_schedule.get(h_curr)
+            next_empty = (c_avail_day.get(h_next, 0) in [1, 2]) and not simulated_day_schedule.get(h_next)
+            
+            # If current is free, but the next available slot is assigned, we have a gap in the middle
+            if curr_empty and (c_avail_day.get(h_next, 0) in [1, 2]) and not next_empty:
+                return False
+        return True
+
+    for d in data['days']:
+        for h in data['hours']:
+            if d == target_day and h == target_hour:
+                continue
+                
+            candidate_prof = schedule.get(course, {}).get(d, {}).get(h)
+            
+            if target_prof == candidate_prof:
+                continue
+                
+            # 1. Check Course Availability (Can't move a prof to a state '0' closed slot)
+            if target_prof and course_avail.get(d, {}).get(h, 0) == 0:
+                continue
+            if candidate_prof and course_avail.get(target_day, {}).get(target_hour, 0) == 0:
+                continue
+                
+            # 2. Check Professor Availability & Double-Booking
+            if not is_prof_available(target_prof, d, h):
+                continue
+            if not is_prof_available(candidate_prof, target_day, target_hour):
+                continue
+                
+            # 3. Check Contiguous FREE hours by simulating the swap
+            simulated_target_day = schedule[course][target_day].copy()
+            simulated_target_day[target_hour] = candidate_prof
+            
+            if d == target_day:
+                # Swap happens on the same day
+                simulated_target_day[h] = target_prof
+                if not validates_contiguous(target_day, simulated_target_day):
+                    continue
+            else:
+                # Swap spans across two different days
+                simulated_candidate_day = schedule[course][d].copy()
+                simulated_candidate_day[h] = target_prof
+                
+                if not validates_contiguous(target_day, simulated_target_day):
+                    continue
+                if not validates_contiguous(d, simulated_candidate_day):
+                    continue
+                    
+            valid_swaps.append((d, h))
+            
+    return valid_swaps
+
+
+def find_swap_by_professor(prof: str, target_day: str, target_hour: str, data: dict, schedule: dict) -> list:
+    """
+    Finds all possible timeslots for a given professor that can be easily swapped 
+    with the specified target timeslot. A swap is valid if all affected courses 
+    and professors can safely accommodate the exchange without violating constraints.
+    """
+    valid_swaps = []
+    
+    def get_course_for_prof(p, d, h):
+        """Identifies which course a professor is teaching at a specific slot."""
+        for c in data['courses']:
+            scheduled_entity = schedule.get(c, {}).get(d, {}).get(h)
+            if scheduled_entity:
+                active_profs = [x.strip() for x in str(scheduled_entity).split(',')]
+                if str(p) in active_profs:
+                    return c
+        return None
+
+    # Identify what the professor is doing at the target slot
+    c_target = get_course_for_prof(prof, target_day, target_hour)
+
+    def is_prof_available(prof_str, d, h, ignore_courses=None):
+        """Helper to verify professor availability, skipping the courses currently being swapped."""
+        if not prof_str: return True
+        if ignore_courses is None: ignore_courses = []
+        
+        profs = [p.strip() for p in str(prof_str).split(',')]
+        for p in profs:
+            if data.get('availability', {}).get(p, {}).get(d, {}).get(h, 0) == 0:
+                return False
+                
+            for c in data['courses']:
+                if c in ignore_courses:
+                    continue
+                c_prof = schedule.get(c, {}).get(d, {}).get(h)
+                if c_prof:
+                    if p in [ap.strip() for ap in str(c_prof).split(',')]:
+                        return False
+        return True
+
+    def validates_contiguous(course, d, simulated_day_schedule):
+        """Ensures the swap doesn't trap FREE hours in the middle of the course's day."""
+        if not course: return True
+        hours = data['hours']
+        c_avail_day = data.get('course_availability', {}).get(course, {}).get(d, {})
+        
+        for i in range(len(hours) - 1):
+            h_curr = hours[i]
+            h_next = hours[i + 1]
+            
+            curr_empty = (c_avail_day.get(h_curr, 0) in [1, 2]) and not simulated_day_schedule.get(h_curr)
+            next_empty = (c_avail_day.get(h_next, 0) in [1, 2]) and not simulated_day_schedule.get(h_next)
+            
+            if curr_empty and (c_avail_day.get(h_next, 0) in [1, 2]) and not next_empty:
+                return False
+        return True
+
+    # Evaluate every other slot in the week
+    for d in data['days']:
+        for h in data['hours']:
+            if d == target_day and h == target_hour:
+                continue
+                
+            # Identify what the professor is doing at the candidate slot
+            c_candidate = get_course_for_prof(prof, d, h)
+            
+            # If the professor is completely free at both slots, there is no assignment to swap
+            if not c_target and not c_candidate:
+                continue
+                
+            is_valid = True
+            
+            # --- 1. Verify Course Target Swap ---
+            if c_target:
+                # FIXED: Use .get() to safely handle empty slots
+                prof_target_target_slot = schedule.get(c_target, {}).get(target_day, {}).get(target_hour)
+                prof_target_candidate_slot = schedule.get(c_target, {}).get(d, {}).get(h)
+                
+                course_avail = data.get('course_availability', {}).get(c_target, {})
+                if prof_target_target_slot and course_avail.get(d, {}).get(h, 0) == 0: is_valid = False
+                if prof_target_candidate_slot and course_avail.get(target_day, {}).get(target_hour, 0) == 0: is_valid = False
+                
+                if is_valid:
+                    if not is_prof_available(prof_target_target_slot, d, h, ignore_courses=[c_target, c_candidate]): is_valid = False
+                    if not is_prof_available(prof_target_candidate_slot, target_day, target_hour, ignore_courses=[c_target, c_candidate]): is_valid = False
+
+                if is_valid:
+                    sim_d1 = schedule[c_target][target_day].copy()
+                    sim_d1[target_hour] = prof_target_candidate_slot
+                    if d == target_day:
+                        sim_d1[h] = prof_target_target_slot
+                        if not validates_contiguous(c_target, target_day, sim_d1): is_valid = False
+                    else:
+                        sim_d2 = schedule[c_target][d].copy()
+                        sim_d2[h] = prof_target_target_slot
+                        if not validates_contiguous(c_target, target_day, sim_d1): is_valid = False
+                        if not validates_contiguous(c_target, d, sim_d2): is_valid = False
+
+            if not is_valid:
+                continue
+
+            # --- 2. Verify Course Candidate Swap ---
+            if c_candidate:
+                # FIXED: Use .get() to safely handle empty slots
+                prof_cand_candidate_slot = schedule.get(c_candidate, {}).get(d, {}).get(h)
+                prof_cand_target_slot = schedule.get(c_candidate, {}).get(target_day, {}).get(target_hour)
+                
+                course_avail = data.get('course_availability', {}).get(c_candidate, {})
+                if prof_cand_candidate_slot and course_avail.get(target_day, {}).get(target_hour, 0) == 0: is_valid = False
+                if prof_cand_target_slot and course_avail.get(d, {}).get(h, 0) == 0: is_valid = False
+                
+                if is_valid:
+                    if not is_prof_available(prof_cand_candidate_slot, target_day, target_hour, ignore_courses=[c_target, c_candidate]): is_valid = False
+                    if not is_prof_available(prof_cand_target_slot, d, h, ignore_courses=[c_target, c_candidate]): is_valid = False
+
+                if is_valid:
+                    sim_d1 = schedule[c_candidate][d].copy()
+                    sim_d1[h] = prof_cand_target_slot
+                    if d == target_day:
+                        sim_d1[target_hour] = prof_cand_candidate_slot
+                        if not validates_contiguous(c_candidate, d, sim_d1): is_valid = False
+                    else:
+                        sim_d2 = schedule[c_candidate][target_day].copy()
+                        sim_d2[target_hour] = prof_cand_candidate_slot
+                        if not validates_contiguous(c_candidate, d, sim_d1): is_valid = False
+                        if not validates_contiguous(c_candidate, target_day, sim_d2): is_valid = False
+
+            if is_valid:
+                valid_swaps.append((d, h))
+                
+    return valid_swaps
+
