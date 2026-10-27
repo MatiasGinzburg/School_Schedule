@@ -114,7 +114,25 @@ def solve_schedule(
     elif "minimize_prof_days" in cost_function:
         # We only hit this elif if 'minimize_prof_gaps' is NOT present, avoiding duplicate 'Y' constraints
         Y = pulp.LpVariable.dicts("Y", (real_profs, days), cat=pulp.LpBinary)
+
+    if "minimize_daily_course_overload" in cost_function:
+        # O represents the number of hours exceeding the 3-hour limit per course/prof/day
+        O = pulp.LpVariable.dicts("O", (courses, real_profs, days), lowBound=0, cat=pulp.LpInteger)
         
+        for c in courses:
+            for p in real_profs:
+                for d in days:
+                    # Sum all alias classes where this specific course AND prof are linked
+                    alias_involvement = [
+                        X_alias[a][d][h] for a in alias_names for h in hours 
+                        if c in aliases[a]['courses'] and p in aliases[a]['professors']
+                    ]
+                    
+                    # O must be >= (Total Hours Today) - 3. 
+                    # If total hours <= 3, RHS is <= 0, and the solver sets O to 0.
+                    # If total hours = 4, RHS is 1, so O is forced to 1.
+                    prob += O[c][p][d] >= pulp.lpSum(X[c][p][d][h] for h in hours) + pulp.lpSum(alias_involvement) - 3
+
         for p in real_profs:
             for d in days:
                 # Total classes = individual classes + alias classes where this prof is involved
@@ -128,19 +146,21 @@ def solve_schedule(
     # For each term in cost_function we add a new term to prob.objective 
     # First terms have priority 100 times bigger
     number_of_cost_function_terms = len(cost_function)
-    weight = 1000 ** (number_of_cost_function_terms -1)
+    weight = 100 ** max(0, number_of_cost_function_terms - 1)
 
     for term in cost_function:
         if term == "minimize_prof_days":
             prob.objective += pulp.lpSum( weight * Y[p][d] for p in real_profs for d in days )
         elif term == "minimize_prof_gaps":
             prob.objective += pulp.lpSum( weight * (E[p][d] - S[p][d]) for p in real_profs for d in days )
+        elif term == "minimize_daily_course_overload":
+            prob.objective += pulp.lpSum( weight * O[c][p][d] for c in courses for p in real_profs for d in days )
         elif term == "pure_feasibility":
             pass # Inherently handled by 'prob += 0' earlier
         else:
             logger.warning(f"Unrecognized cost function term '{term}'. Ignoring.")
         
-        weight /= 1000
+        weight /= 100
 
     # ---------------------------------------------------------
     # 3. DYNAMIC CONSTRAINTS (Multiple active)

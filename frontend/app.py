@@ -33,8 +33,12 @@ st.sidebar.header("⚙️ Solver Configuration")
 st.sidebar.subheader("🎯 Optimization Goals")
 cost_options = st.sidebar.multiselect(
     "Select and prioritize goals (First selected = Highest Priority):",
-    options=["minimize_prof_days", "minimize_prof_gaps"],
-    format_func=lambda x: "📅 Minimize Professor Days" if x == "minimize_prof_days" else "⏱️ Minimize Empty Gaps",
+    options=["minimize_prof_days", "minimize_prof_gaps", "minimize_daily_course_overload"],
+    format_func=lambda x: {
+        "minimize_prof_days": "📅 Minimize Professor Days",
+        "minimize_prof_gaps": "⏱️ Minimize Empty Gaps",
+        "minimize_daily_course_overload": "⚖️ Limit to Max 3 Hrs/Course/Day"
+    }.get(x, x),
     default=[]
 )
 
