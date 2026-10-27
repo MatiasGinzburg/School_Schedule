@@ -4,10 +4,9 @@ import copy
 
 logger = logging.getLogger(__name__)
 
-
 def solve_schedule(
     data: dict, 
-    cost_function: str = "pure_feasibility", 
+    cost_function: list = None, 
     active_constraints: list = None,
     timeLimit=120
 ):
@@ -16,6 +15,9 @@ def solve_schedule(
     based strictly on the requested cost function and constraints.
     Supports virtual aliases for joint/multi-component lectures.
     """
+    if cost_function is None:
+        cost_function = []
+        
     if active_constraints is None:
         active_constraints = [
             "fulfill_req_hours", 
@@ -24,7 +26,7 @@ def solve_schedule(
             "force_free_hours_to_end"
         ]
         
-    logger.info(f"Solving model. Cost Function: '{cost_function}'. Constraints: {len(active_constraints)} active.")
+    logger.info(f"Solving model. Cost Function: {cost_function}. Constraints: {len(active_constraints)} active.")
     
     d_mod = copy.deepcopy(data)
     courses = d_mod['courses']
@@ -78,18 +80,17 @@ def solve_schedule(
     L = len(hours) - 1
 
     # ---------------------------------------------------------
-    # 2. DYNAMIC COST FUNCTIONS (Only 1 active)
+    # 2. DYNAMIC COST FUNCTIONS
     # ---------------------------------------------------------
-    if cost_function == "minimize_prof_days_and_gaps":
+    # Start with finding a feasible solution
+    prob += 0, "Cost_Base_Feasibility"
+
+    # Define the variables that we are going to need based on the list
+    if "minimize_prof_gaps" in cost_function:
         Y = pulp.LpVariable.dicts("Y", (real_profs, days), cat=pulp.LpBinary)
         E = pulp.LpVariable.dicts("E", (real_profs, days), lowBound=0, cat=pulp.LpInteger)
         S = pulp.LpVariable.dicts("S", (real_profs, days), lowBound=0, cat=pulp.LpInteger)
-
-        prob += pulp.lpSum(
-            1000 * Y[p][d] + (E[p][d] - S[p][d]) 
-            for p in real_profs for d in days
-        ), "Cost_Minimize_Days_and_Gaps"
-
+        
         for p in real_profs:
             for d in days:
                 # Total classes = individual classes + alias classes where this prof is involved
@@ -99,6 +100,7 @@ def solve_schedule(
                 ]
                 
                 prob += pulp.lpSum(X[c][p][d][h] for c in courses for h in hours) + pulp.lpSum(alias_involvement_h) <= len(hours) * Y[p][d]
+                # len(hours) * Y[p][d] is bigger than the amount of hours that professor p at day d teaches at school
                 prob += S[p][d] <= L * Y[p][d]
                 
                 for h_idx, h in enumerate(hours):
@@ -108,13 +110,37 @@ def solve_schedule(
                     )
                     prob += E[p][d] >= h_idx * is_teaching_h
                     prob += S[p][d] <= h_idx * is_teaching_h + L * (1 - is_teaching_h)
-
-    elif cost_function == "pure_feasibility":
-        prob += 0, "Cost_Pure_Feasibility"
+                    
+    elif "minimize_prof_days" in cost_function:
+        # We only hit this elif if 'minimize_prof_gaps' is NOT present, avoiding duplicate 'Y' constraints
+        Y = pulp.LpVariable.dicts("Y", (real_profs, days), cat=pulp.LpBinary)
         
-    else:
-        logger.warning(f"Unrecognized cost function '{cost_function}'. Defaulting to pure feasibility.")
-        prob += 0, "Cost_Fallback"
+        for p in real_profs:
+            for d in days:
+                # Total classes = individual classes + alias classes where this prof is involved
+                alias_involvement_h = [
+                    X_alias[a][d][h] for a in alias_names for h in hours 
+                    if p in aliases[a]['professors']
+                ]
+                
+                prob += pulp.lpSum(X[c][p][d][h] for c in courses for h in hours) + pulp.lpSum(alias_involvement_h) <= len(hours) * Y[p][d]
+
+    # For each term in cost_function we add a new term to prob.objective 
+    # First terms have priority 100 times bigger
+    number_of_cost_function_terms = len(cost_function)
+    weight = 1000 ** (number_of_cost_function_terms -1)
+
+    for term in cost_function:
+        if term == "minimize_prof_days":
+            prob.objective += pulp.lpSum( weight * Y[p][d] for p in real_profs for d in days )
+        elif term == "minimize_prof_gaps":
+            prob.objective += pulp.lpSum( weight * (E[p][d] - S[p][d]) for p in real_profs for d in days )
+        elif term == "pure_feasibility":
+            pass # Inherently handled by 'prob += 0' earlier
+        else:
+            logger.warning(f"Unrecognized cost function term '{term}'. Ignoring.")
+        
+        weight /= 1000
 
     # ---------------------------------------------------------
     # 3. DYNAMIC CONSTRAINTS (Multiple active)
@@ -198,5 +224,3 @@ def solve_schedule(
                             schedule[c][d][h] = ", ".join(profs)
                         
     return schedule
-
-

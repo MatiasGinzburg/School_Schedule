@@ -29,20 +29,28 @@ if 'data_info' not in st.session_state:
 # --- UI: Configuration Sidebar ---
 st.sidebar.header("⚙️ Solver Configuration")
 
-cost_option = st.sidebar.radio(
-    "Optimization Goal:",
-    options=["pure_feasibility", "minimize_prof_days_and_gaps"],
-    format_func=lambda x: "⚡ Fast Feasibility (Any valid schedule)" if x == "pure_feasibility" else "🎯 Minimize Days & Gaps (Optimal but slower)",
-    index=0
+# Updated: Multiselect returns a list in the order items are clicked, handling the new prioritization logic
+st.sidebar.subheader("🎯 Optimization Goals")
+cost_options = st.sidebar.multiselect(
+    "Select and prioritize goals (First selected = Highest Priority):",
+    options=["minimize_prof_days", "minimize_prof_gaps"],
+    format_func=lambda x: "📅 Minimize Professor Days" if x == "minimize_prof_days" else "⏱️ Minimize Empty Gaps",
+    default=[]
 )
 
+# Fallback to feasibility if the list is empty
+if not cost_options:
+    cost_options = ["pure_feasibility"]
+    st.sidebar.info("⚡ Fast Feasibility (Any valid schedule) is active.")
+
+st.sidebar.subheader("🔒 Constraints")
 force_contiguous = st.sidebar.checkbox(
     "Force Free Hours to End of Day", 
     value=True, 
-    help="Pushes all unassigned optional slots (2) strictly to the end of the day."
+    help="Pushes all unassigned optional slots (2) strictly to the end of the day." 
 )
 
-# Build the active constraints list based on UI selections
+# Build the active constraints list based on UI selections 
 selected_constraints = [
     "fulfill_req_hours", 
     "respect_course_availability", 
@@ -51,22 +59,20 @@ selected_constraints = [
 if force_contiguous:
     selected_constraints.append("force_free_hours_to_end")
 
-
 # --- UI: Main Area ---
-uploaded_file = st.file_uploader("Upload Schedule Data (.xlsx)", type=["xlsx"])
+uploaded_file = st.file_uploader("Upload Schedule Data (.xlsx)", type=["xlsx"]) 
 
 if uploaded_file is not None:
     st.success("File uploaded successfully!")
     
-    # --- UI Layout Magic ---
-    # Elements will visually appear on the screen in exactly this order:
-    data_info_placeholder = st.empty()     # 1. "Data loaded successfully..."
-    spinner_placeholder = st.empty()       # 2. "Analyzing data..."
-    results_container = st.container()     # 3. Visualizer and Downloads
-    logs_container = st.container()        # 4. Warnings, errors, and logs
+    # --- UI Layout Magic --- 
+    # Create structural placeholders to strictly control the UI rendering order. 
+    data_info_placeholder = st.empty()     # 1. "Data loaded successfully..." 
+    spinner_placeholder = st.empty()       # 2. "Analyzing data..." 
+    results_container = st.container()     # 3. Visualizer and Downloads 
+    logs_container = st.container()        # 4. Warnings, errors, and logs 
     
     if st.button("Generate Schedule", type="primary"):
-        # Force the spinner to render in slot #2
         with spinner_placeholder:
             with st.spinner("Analyzing data and running optimization..."):
                 try:
@@ -78,9 +84,9 @@ if uploaded_file is not None:
                     data_info_placeholder.info(info_msg)
 
                     # Run Pre-Optimization Checks
-                    is_feasible, errors, warnings = pre_optimization_checks(data, margin=1.3)
+                    is_feasible, errors, warnings = pre_optimization_checks(data, margin=1.3) 
                     
-                    # Send warnings and errors to slot #4
+                    # Send warnings and errors to slot #4 
                     with logs_container:
                         for w in warnings:
                             st.warning(w)
@@ -96,7 +102,7 @@ if uploaded_file is not None:
                             # 2. Solve Schedule
                             schedule = solve_schedule(
                                 data=data, 
-                                cost_function=cost_option, 
+                                cost_function=cost_options,  # Now passing the list of strings
                                 active_constraints=selected_constraints
                             )
                             
@@ -110,7 +116,7 @@ if uploaded_file is not None:
                                 if is_valid:
                                     st.success("✨ Optimal schedule generated and strictly verified!")
                                     
-                                    # 4. Save the generated files into Streamlit's session state
+                                    # 4. Save the generated files into Streamlit's session state 
                                     st.session_state.master_bytes = export_schedule_to_excel_bytes(schedule, data)
                                     st.session_state.prof_bytes = export_professor_schedules_to_bytes(schedule, data)
                                     st.session_state.schedule_generated = True
@@ -129,7 +135,6 @@ if uploaded_file is not None:
     if st.session_state.schedule_generated and st.session_state.data_info:
         data_info_placeholder.info(st.session_state.data_info)
 
-    # Render the downloads and visualizer in slot #3
     if st.session_state.schedule_generated:
         with results_container:
             st.write("### 📥 Download Your Schedules")
