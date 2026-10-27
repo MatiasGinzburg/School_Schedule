@@ -11,6 +11,19 @@ def load_and_validate_data(file_path):
     """
     Reads the consolidated spreadsheet, generating both standard requirements 
     and virtual aliases for joint lectures entirely from the Subjects sheet.
+
+
+    Output a dictionary with the following entries
+    "courses": list with the names of the courses,
+    "professors": list with the names of the professors,
+    "days": list with the names of the days,
+    "hours": list with the names of the courses hours,
+    "req_hours": dictionary with entries [course][proffesor] and values req_hours[c][p]= #total amount of hours that proffesor p teaches to course c,
+    "availability": dictionary with entries [professor][day][hour] and values availability[p][d][h] = 1 if professor p is available day d at hout h, 0 otherwise
+    "course_availability": dictionary with entries [course][day][hour] and values availability[c][d][h] = 1 if course c must be at school day d at hout h, 2 if is optional to assign that slot , 0 is the course is not at school on that slot
+    "aliases": dictionary of dictionaries. aliases[alias_name]["professors"]: list of professors associated to that alias, aliases[alias_name]["courses"]: list of courses associated to that alias
+    "alias_requirements": alias_requirements[alias_name] = amount of hours that the professors in alias_name teach to the courses in alias_name,
+    "subject_map": dictionary that tells you the name of the subject that a set of proffesors tech to a course subject_map[(c,prof_str)]=name of the subject
     """
     logger.info("Loading data from uploaded file...")
     xls = pd.ExcelFile(file_path)
