@@ -30,10 +30,13 @@ Start the local Streamlit web server by running the following command in your te
 
 4. **Drag and drop your formatted schedule .xlsx file into the web interface**.
 
-5. **Visualisation and manual editing:**
+5. **Choose optimization objectives**:
+On the left-side panel you will find a dropdown menu from wich you can select the objectives that you want to optimize. 
+
+6. **Visualisation and manual editing:**
 Visualize and manually edit the schedule for fine tuning.
 
-6. **Generate and Download:**
+7. **Generate and Download:**
 Click Generate Schedule. The application will optimize the schedule to minimize the days professors must attend and compress their active hours. Once verified, you can download both the Master Schedule and the individual Professor Schedules directly from the browser.
 
 ## Input Data Format Requirements
